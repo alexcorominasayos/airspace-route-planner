@@ -1,90 +1,123 @@
-import matplotlib.pyplot as plt
-import numpy as np
-from segment import *
+"""Directed graph container made of nodes and segments.
 
-class graph:
-    def __init__(self,nodesList,segmentsList):
-        self.nodesList=nodesList
-        self.segmentsList=segmentsList
+Only data storage and lookup live here. Drawing is handled by a separate
+plotting module and reading graphs from files by a separate loader module, so
+this class can be reused and tested without matplotlib or the file system.
+"""
 
-#we define object graph
+from __future__ import annotations
 
-def addNode(g,node):
-    if node in g.nodesList:
-        return False
-    else:
-        g.nodesList.append(node)
+from typing import Iterable, List, Optional
+
+from node import Node, ensure_node
+from segment import Segment
+
+
+class Graph:
+    """A directed graph of :class:`Node` objects joined by :class:`Segment` objects.
+
+    Attributes:
+        nodes: All vertices of the graph.
+        segments: All directed, weighted edges of the graph.
+    """
+
+    def __init__(
+        self,
+        nodes: Optional[Iterable[Node]] = None,
+        segments: Optional[Iterable[Segment]] = None,
+    ) -> None:
+        """Create a graph, optionally pre-filled with nodes and segments.
+
+        The incoming iterables are copied. ``None`` defaults (instead of
+        ``[]``) avoid Python's shared-mutable-default pitfall, and copying
+        stops the graph from silently aliasing the caller's lists.
+
+        Args:
+            nodes: Initial nodes. Defaults to an empty graph.
+            segments: Initial segments. Their endpoints are expected to be
+                among ``nodes``; this is not re-checked, to keep bulk loading
+                of large airspaces fast.
+
+        Raises:
+            TypeError: If any item is not a Node / Segment respectively.
+        """
+        self.nodes: List[Node] = [
+            ensure_node(node, "Every graph node") for node in (nodes or [])
+        ]
+        self.segments: List[Segment] = list(segments or [])
+        for segment in self.segments:
+            if not isinstance(segment, Segment):
+                raise TypeError(
+                    f"Every graph segment must be a Segment, got {type(segment).__name__}."
+                )
+
+    @property
+    def is_empty(self) -> bool:
+        """True when the graph has no nodes."""
+        return not self.nodes
+
+    def find_node(self, name: str) -> Optional[Node]:
+        """Return the first node called ``name``, or ``None`` if there is none.
+
+        Names are not enforced to be unique, so when several nodes share a
+        name the first one wins.
+        """
+        return next((node for node in self.nodes if node.name == name), None)
+
+    def has_node(self, name: str) -> bool:
+        """Return True if a node called ``name`` exists in the graph."""
+        return self.find_node(name) is not None
+
+    def add_node(self, node: Node) -> bool:
+        """Add a node unless that exact object is already in the graph.
+
+        Uniqueness is by object identity, not by name: airspace data may
+        legitimately contain different points that share a name, and dropping
+        them would break the segments that refer to them.
+
+        Args:
+            node: The node to add.
+
+        Returns:
+            True if the node was added, False if it was already present.
+
+        Raises:
+            TypeError: If ``node`` is not a Node.
+        """
+        ensure_node(node, "Graph node")
+        if node in self.nodes:
+            return False
+        self.nodes.append(node)
         return True
 
-#we add node to the node list
+    def add_segment(
+        self,
+        origin_name: str,
+        destination_name: str,
+        cost: Optional[float] = None,
+    ) -> bool:
+        """Connect two existing nodes, looked up by name, with a new segment.
 
-def addSegment(g,name1,name2):
-    try:
-        for node in g.nodesList:
-            if node.name==name1:
-                n1=node
-            if node.name==name2:
-                n2=node
-        if (n2 or n1) in g.nodesList:
-            s=segment(n1,n2)
-            g.segmentsList.append(s)
-            return True
-    except(UnboundLocalError):
-        return False
+        Args:
+            origin_name: Name of the node where the segment starts.
+            destination_name: Name of the node where the segment ends.
+            cost: Segment weight. Defaults to the Euclidean distance between
+                the two nodes (see :class:`Segment`).
 
-#we add a segment to the segment list correcting for error in case of not finding said value
+        Returns:
+            True if the segment was created, False if either node name does
+            not exist in the graph.
 
-def plot(g):
-    plt.ion()
-    plt.clf()
-    plt.grid(color="green",linestyle="--",linewidth=.5)
-    for node in g.nodesList:
-        plt.text(node.xcoord+0.3,node.ycoord+0.3,str(node.name),fontsize=10\
-        ,horizontalalignment='center',verticalalignment='center')
-        plt.scatter(node.xcoord, node.ycoord, color="black")
-        plt.draw()
-        plt.pause(0.05)
-    for segment in g.segmentsList:
-        x1=segment.n1.xcoord
-        x2=segment.n2.xcoord
-        y1 = segment.n1.ycoord
-        y2 = segment.n2.ycoord
-        plt.arrow(x1,y1,x2-x1,y2-y1,head_width=.3,length_includes_head=True,color="r")
-        plt.text((x1+x2)/2+.3,(y1+y2)/2+.3,round(segment.cost,2),fontsize=9\
-        ,horizontalalignment='center',verticalalignment='center')
-        plt.draw()
-        plt.pause(0.05)
-    plt.show(block=False)
+        Raises:
+            ValueError: If ``cost`` is not a finite, non-negative number.
+        """
+        origin = self.find_node(origin_name)
+        destination = self.find_node(destination_name)
+        if origin is None or destination is None:
+            return False
 
-#we plot iterating through all segments and nodes
+        self.segments.append(Segment(origin, destination, cost))
+        return True
 
-def plotNode(g,n):
-    try:
-        plt.ion()
-        plt.clf()
-        plt.grid(color="green", linestyle="--", linewidth=.5)
-        for node in g.nodesList:
-            plt.scatter(node.xcoord, node.ycoord, color="gray")
-            plt.text(node.xcoord + 0.3, node.ycoord + 0.3, str(node.name), fontsize=10\
-                   , horizontalalignment='center', verticalalignment='center')
-            plt.draw()
-            plt.pause(0.05)
-            if node.name == n:
-                nodeMain = node
-        i=0
-        while i<(len(nodeMain.nList)):
-            x1 = nodeMain.xcoord
-            x2 = nodeMain.nList[i].xcoord
-            y1 = nodeMain.ycoord
-            y2 = nodeMain.nList[i].ycoord
-            plt.arrow(x1, y1, x2 - x1, y2 - y1, head_width=.3, length_includes_head=True, color="r")
-            plt.text((x1 + x2) / 2 + .3, (y1 + y2) / 2 + .3, round(((x2-x1)**2+(y2-y1)**2)**(1/2), 2), fontsize=9 \
-                  , horizontalalignment='center', verticalalignment='center')
-            plt.draw()
-            plt.pause(0.05)
-            i+=1
-        plt.show(block=True)
-    except(UnboundLocalError):
-        return False
-
-#we plot iterating only through the selected node atributes
+    def __repr__(self) -> str:
+        return f"Graph(nodes={len(self.nodes)}, segments={len(self.segments)})"
