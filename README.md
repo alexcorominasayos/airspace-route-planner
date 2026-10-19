@@ -178,3 +178,7 @@ Routes can also be exported to KML format and visualized using Google Earth. The
 ## Project Context
 
 This project was developed as an aerospace engineering project focused on airspace modelling, route planning and algorithmic pathfinding.
+
+## License
+
+**MIT**
